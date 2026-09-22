@@ -31,3 +31,4 @@ window.APP_PASSWORD = "CasitaZapiola2026$";
 
 window.DB_PATH = "gastosCompartidos";
 
+window.ALLOWED_EMAILS = ["nicolasmouler@gmail.com", "delfinalarriva@gmail.com"];
