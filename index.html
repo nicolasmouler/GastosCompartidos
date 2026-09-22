@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cuentas claras — Delfina y Nicolás</title>
+<meta name="theme-color" content="#26231C">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,6 +33,11 @@
     <button type="button" class="theme-btn" id="themeBtn" aria-label="Cambiar tema">◐</button>
   </header>
 
+  <div class="auth-bar" id="authBar" hidden>
+    <span id="authStatus">Conectate con Google para poder cargar movimientos.</span>
+    <button type="button" class="link-btn" id="authBtn">Conectar con Google</button>
+  </div>
+
   <div class="wrap">
 
     <section class="hero">
@@ -38,6 +46,10 @@
       <div class="stats">
         <div class="stat delfina"><span>Pagó Delfina</span><b id="statDelfina">$0</b></div>
         <div class="stat nicolas"><span>Pagó Nicolás</span><b id="statNicolas">$0</b></div>
+      </div>
+      <div class="chart-wrap" id="chartWrap" hidden>
+        <p class="chart-caption">Evolución del saldo</p>
+        <div id="chartHolder"></div>
       </div>
     </section>
 
@@ -57,6 +69,22 @@
           <div class="payer-toggle" id="payerToggle" role="radiogroup" aria-label="Quién pagó">
             <button type="button" class="payer-btn delfina" data-payer="delfina" aria-pressed="true">Pagó Delfina</button>
             <button type="button" class="payer-btn nicolas" data-payer="nicolas" aria-pressed="false">Pagó Nicolás</button>
+          </div>
+
+          <div class="field-row" id="categoryRow">
+            <div class="field">
+              <label for="category">Categoría</label>
+              <select id="category">
+                <option value="supermercado">Supermercado</option>
+                <option value="comida">Comida afuera</option>
+                <option value="transporte">Transporte</option>
+                <option value="servicios">Servicios</option>
+                <option value="salud">Salud</option>
+                <option value="entretenimiento">Entretenimiento</option>
+                <option value="hogar">Hogar</option>
+                <option value="otros" selected>Otros</option>
+              </select>
+            </div>
           </div>
 
           <div class="payer-toggle" id="directionToggle" role="radiogroup" aria-label="Quién le paga a quién" hidden>
@@ -112,6 +140,17 @@
             </div>
           </div>
 
+          <div class="field-row">
+            <div class="field">
+              <label for="receiptInput">Foto del ticket (opcional)</label>
+              <input type="file" id="receiptInput" accept="image/*" capture="environment">
+              <div class="receipt-preview" id="receiptPreview" hidden>
+                <img id="receiptPreviewImg" alt="Vista previa del ticket">
+                <button type="button" class="link-btn" id="removeReceiptBtn">Quitar foto</button>
+              </div>
+            </div>
+          </div>
+
           <p class="edit-banner" id="editBanner" hidden>Estás editando un movimiento · <button type="button" class="link-btn" id="cancelEditBtn">Cancelar</button></p>
           <button type="submit" class="submit-btn" id="submitBtn">Agregar gasto</button>
           <p class="status-line" id="formStatus"></p>
@@ -119,11 +158,19 @@
       </aside>
 
       <section class="ledger-section">
-        <div class="filter-row" role="tablist" aria-label="Filtrar movimientos">
-          <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">Todos</button>
-          <button type="button" class="filter-btn" data-filter="delfina" aria-pressed="false">Delfina</button>
-          <button type="button" class="filter-btn" data-filter="nicolas" aria-pressed="false">Nicolás</button>
-          <button type="button" class="filter-btn" data-filter="settlement" aria-pressed="false">Pagos</button>
+        <div class="toolbar-row">
+          <div class="filter-row" role="tablist" aria-label="Filtrar movimientos">
+            <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">Todos</button>
+            <button type="button" class="filter-btn" data-filter="delfina" aria-pressed="false">Delfina</button>
+            <button type="button" class="filter-btn" data-filter="nicolas" aria-pressed="false">Nicolás</button>
+            <button type="button" class="filter-btn" data-filter="settlement" aria-pressed="false">Pagos</button>
+          </div>
+          <div class="toolbar-actions">
+            <select id="categoryFilter" class="category-filter" aria-label="Filtrar por categoría">
+              <option value="all">Todas las categorías</option>
+            </select>
+            <button type="button" class="icon-btn" id="exportCsvBtn" title="Exportar CSV" aria-label="Exportar CSV">⬇</button>
+          </div>
         </div>
         <div class="ledger" id="ledger">
           <div class="empty">Conectando…</div>
@@ -134,10 +181,13 @@
   </div>
 </div>
 
+<button type="button" class="fab" id="fabBtn" aria-label="Agregar movimiento">+</button>
+
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="app.js"></script>
 </body>

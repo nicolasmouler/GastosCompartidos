@@ -1,30 +1,36 @@
 # Cuentas claras — Delfina y Nicolás
 
 Sitio estático para llevar el registro de gastos compartidos y pagos directos
-entre Delfina y Nicolás, con saldo automático, agrupado por mes, y cotización
-del dólar cargada sola. Pensado para publicarse en GitHub Pages y sincronizar
-datos con Firebase Realtime Database (mismo esquema que el dashboard del
-crédito UVA).
+entre Delfina y Nicolás. Publicado en GitHub Pages, sincroniza con Firebase
+Realtime Database.
 
-## 1. Crear (o reutilizar) un proyecto de Firebase
+## Novedades de esta versión
 
-1. Entrá a [console.firebase.google.com](https://console.firebase.google.com/) y creá un proyecto (o abrí uno que ya tengas).
-2. En el menú lateral, andá a **Compilación → Realtime Database** y creá una base de datos (modo "bloqueado" está bien, las reglas se ajustan en el paso 3).
-3. Andá a **Configuración del proyecto** (el engranaje) → pestaña **General** → sección "Tus apps" → **Agregar app → Web** (ícono `</>`). Ponele un nombre y registrala.
-4. Firebase te va a mostrar un bloque `firebaseConfig = {...}`. Copiá esos valores.
-5. Abrí `firebase-config.js` en este proyecto y pegalos en `window.FIREBASE_CONFIG`, reemplazando los placeholders (`TU_API_KEY`, etc.). Asegurate de que `databaseURL` esté completo (algo como `https://tu-proyecto-default-rtdb.firebaseio.com`).
+- **Login con Google (opcional):** restringe quién puede cargar, editar o
+  borrar movimientos a las cuentas que vos definas.
+- **Deshacer al eliminar:** al borrar un movimiento aparece un botón
+  "Deshacer" por 5 segundos.
+- **Categorías** en los gastos compartidos, con filtro por categoría.
+- **Exportar a CSV** (botón ⬇ junto a los filtros).
+- **Gráfico** de evolución del saldo a lo largo del tiempo.
+- **Foto del ticket** opcional en cada gasto.
+- **App instalable (PWA):** desde el navegador del celu, "Agregar a la
+  pantalla de inicio".
+- **Botón + flotante** en mobile para ir directo al formulario.
+- **Borrador automático:** si recargás sin querer con el formulario a
+  medio llenar, lo recupera solo.
 
-Si ya tenés un proyecto de Firebase para otra cosa (como el dashboard UVA), podés
-reutilizarlo tranquilamente: esta app guarda todo bajo una rama separada
-(`gastosCompartidos` por defecto, configurable en `DB_PATH`), así que no pisa
-nada de lo que ya tengas ahí.
+## 1. Firebase — lo de siempre
+
+Los pasos para crear el proyecto, la Realtime Database y completar
+`firebase-config.js` con tu `FIREBASE_CONFIG` son los mismos que ya
+hiciste. Si es la primera vez, la sección "Crear un proyecto de Firebase"
+de la versión anterior de este README te sirve igual.
 
 ## 2. Reglas de la base de datos
 
-Para que solo ustedes dos puedan leer y escribir, lo más simple (sin armar
-login) es dejar la base de datos abierta pero con un nombre de rama que nadie
-más va a adivinar, y opcionalmente sumar la contraseña del paso 4. Si querés
-algo más estricto, en **Realtime Database → Reglas** podés poner:
+Si **no** vas a usar el login con Google (dejaste `ALLOWED_EMAILS` vacío),
+seguí usando las reglas simples de siempre:
 
 ```json
 {
@@ -41,59 +47,88 @@ algo más estricto, en **Realtime Database → Reglas** podés poner:
 }
 ```
 
-Esto abre lectura/escritura solo para la rama que usa esta app y bloquea el
-resto de la base. No es autenticación real (cualquiera con el link y la URL
-de tu base podría escribir), pero alcanza para un uso entre dos personas que
-confían entre sí. Si más adelante querés algo más seguro, Firebase Auth con
-email/contraseña es el siguiente paso natural.
+## 3. Login con Google (opcional pero recomendado)
 
-## 3. Contraseña de acceso (opcional)
+Esto es lo que da seguridad *real* — la contraseña del paso del gate es
+solo una cortina visual.
 
-Si querés que el sitio pida una contraseña antes de mostrar los movimientos
-(como el dashboard UVA), completá `window.APP_PASSWORD` en
-`firebase-config.js` con el texto que quieras. Dejalo como `""` para que no
-pida nada. Ojo: es una traba visual en el navegador, no reemplaza las reglas
-de Firebase del paso 2.
+1. En la consola de Firebase de tu proyecto, andá a **Authentication →
+   Sign-in method** → habilitá **Google** como proveedor.
+2. En **Authentication → Settings → Authorized domains**, agregá tu
+   dominio de GitHub Pages (por ejemplo `nicolasmouler.github.io`) si no
+   aparece ya solo.
+3. En `firebase-config.js`, completá:
+   ```js
+   window.ALLOWED_EMAILS = ["nicolas@gmail.com", "delfina@gmail.com"];
+   ```
+   (con las cuentas de Google reales de cada uno).
+4. En **Realtime Database → Reglas**, reemplazá por esto — cambiando los
+   dos emails de ejemplo por los mismos que pusiste arriba:
+   ```json
+   {
+     "rules": {
+       "gastosCompartidos": {
+         ".read": true,
+         ".write": "auth != null && (auth.token.email === 'nicolas@gmail.com' || auth.token.email === 'delfina@gmail.com')"
+       },
+       "$other": {
+         ".read": false,
+         ".write": false
+       }
+     }
+   }
+   ```
+5. Publicá las reglas.
 
-## 4. Publicar en GitHub Pages
+Con esto, cualquiera con el link y la contraseña puede *ver* los
+movimientos, pero solo ustedes dos — conectados con su cuenta de Google —
+pueden cargar, editar o borrar. Si dejás `ALLOWED_EMAILS` vacío, el sitio
+funciona exactamente como antes (sin pedir Google).
 
-1. Creá un repositorio nuevo en GitHub (puede ser privado o público — si es
-   público, cualquiera podrá ver el código y por lo tanto el `firebaseConfig`,
-   pero eso no es un problema de seguridad en sí mismo: lo que protege los
-   datos son las reglas de Firebase del paso 2, no ocultar esta clave).
-2. Subí los 4 archivos de esta carpeta (`index.html`, `styles.css`, `app.js`,
-   `firebase-config.js`) a la raíz del repo.
-3. En el repo, andá a **Settings → Pages**, y en "Source" elegí la rama
-   `main` (o la que uses) y la carpeta `/ (root)`.
-4. Esperá un minuto y el sitio va a quedar publicado en
-   `https://tu-usuario.github.io/nombre-del-repo/`.
+## 4. Ícono y nombre de la app instalable
 
-Cada vez que quieras actualizar el sitio, alcanza con subir los cambios al
-repo (`git push`); GitHub Pages se actualiza solo.
+Ya incluí `manifest.json` y dos íconos genéricos (`icon-192.png`,
+`icon-512.png`) para que el sitio se pueda instalar como app. Si querés un
+ícono propio, reemplazá esos dos archivos por tus PNG (mismos nombres y
+tamaños) y volvé a subir.
+
+## 5. Publicar en GitHub Pages
+
+Subí **todos** los archivos de esta carpeta a la raíz del repo (no en una
+subcarpeta): `index.html`, `styles.css`, `app.js`, `firebase-config.js`,
+`manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png`. Si ya tenías el
+repo armado, alcanza con subir/reemplazar estos mismos archivos.
+
+Si cambiás `app.js` o `styles.css` más adelante y ves que el celular sigue
+mostrando la versión vieja, es el Service Worker cacheando: abrí `sw.js` y
+cambiá `CACHE_NAME` (por ejemplo de `'cuentas-claras-v1'` a
+`'cuentas-claras-v2'`), subí ese cambio, y en el celular forzá un refresh
+una vez más.
+
+## Sobre la foto del ticket
+
+Se guarda directamente en la base de datos como imagen comprimida (no usa
+Firebase Storage, para mantener todo simple). Cada foto pesa entre 50 y
+150 KB aprox. Es un uso perfectamente razonable para uso personal, pero si
+con el tiempo suman muchísimas fotos y notan que la app carga más lento,
+se puede pasar a Firebase Storage más adelante.
 
 ## Cómo funciona la cotización automática
 
 Al elegir "Pago directo" → "Dólares", el sitio busca solo la cotización:
-
-- Si la fecha cargada es **hoy**, usa la cotización actual de
-  [dolarapi.com](https://dolarapi.com).
-- Si es una fecha **pasada**, busca el valor histórico de ese día en
-  [argentinadatos.com](https://argentinadatos.com) (que a su vez toma los
-  datos de DolarApi).
-
-Podés elegir el tipo de cotización (Blue, Oficial, MEP, CCL, Mayorista,
-Cripto) con el selector. El valor se puede editar a mano en cualquier
-momento — si tocás el campo, deja de autocompletarse hasta que uses el botón
-⟳ para volver a buscarlo. Como son APIs públicas y gratuitas, puede fallar
-alguna consulta puntual (fin de semana sin cotización cargada, corte del
-servicio, etc.): en ese caso el sitio te avisa y podés cargar el número a
-mano sin problema.
+actual (dolarapi.com) si la fecha es hoy, o histórica de ese día puntual
+(argentinadatos.com) si es una fecha pasada. Podés elegir Blue, Oficial,
+MEP, CCL, Mayorista o Cripto. El valor es editable a mano en cualquier
+momento.
 
 ## Estructura del proyecto
 
 ```
-index.html          — la página
-styles.css           — estilos
-app.js                — toda la lógica (formulario, saldo, Firebase, cotización)
-firebase-config.js   — tus credenciales de Firebase + contraseña opcional
+index.html                  — la página
+styles.css                  — estilos
+app.js                       — toda la lógica
+firebase-config.js          — tus credenciales de Firebase + contraseña + emails autorizados
+manifest.json                — metadata para instalar como app
+sw.js                        — service worker (caché del sitio, no de los datos)
+icon-192.png, icon-512.png  — íconos de la app
 ```

@@ -11,6 +11,9 @@
   var gateErrorEl = document.getElementById('gateError');
   var appEl = document.getElementById('app');
   var themeBtn = document.getElementById('themeBtn');
+  var authBarEl = document.getElementById('authBar');
+  var authStatusEl = document.getElementById('authStatus');
+  var authBtn = document.getElementById('authBtn');
 
   var form = document.getElementById('expenseForm');
   var formCardEl = document.getElementById('formCard');
@@ -19,6 +22,9 @@
   var dateEl = document.getElementById('date');
   var descEl = document.getElementById('description');
   var descSuggestionsEl = document.getElementById('descSuggestions');
+  var categoryRowEl = document.getElementById('categoryRow');
+  var categoryEl = document.getElementById('category');
+  var categoryFilterEl = document.getElementById('categoryFilter');
   var dolarCasaEl = document.getElementById('dolarCasa');
   var rateEl = document.getElementById('rate');
   var rateRowEl = document.getElementById('rateRow');
@@ -29,6 +35,14 @@
   var balanceLineEl = document.getElementById('balanceLine');
   var statDelfinaEl = document.getElementById('statDelfina');
   var statNicolasEl = document.getElementById('statNicolas');
+  var chartWrapEl = document.getElementById('chartWrap');
+  var chartHolderEl = document.getElementById('chartHolder');
+  var receiptInputEl = document.getElementById('receiptInput');
+  var receiptPreviewEl = document.getElementById('receiptPreview');
+  var receiptPreviewImgEl = document.getElementById('receiptPreviewImg');
+  var removeReceiptBtn = document.getElementById('removeReceiptBtn');
+  var exportCsvBtn = document.getElementById('exportCsvBtn');
+  var fabBtn = document.getElementById('fabBtn');
   var payerButtons = Array.prototype.slice.call(document.querySelectorAll('#payerToggle .payer-btn'));
   var directionButtons = Array.prototype.slice.call(document.querySelectorAll('#directionToggle .payer-btn'));
   var currencyButtons = Array.prototype.slice.call(document.querySelectorAll('#currencyToggle .payer-btn'));
@@ -52,6 +66,7 @@
   var rateAutoFilled = false;
   var fetchToken = 0;
   var activeFilter = 'all';
+  var activeCategory = 'all';
   var expandedMonths = {};
   var dbRef = null;
   var docs = [];
@@ -59,9 +74,19 @@
   var lastNet = 0; // > 0: Nicolás owes Delfina. < 0: Delfina owes Nicolás.
   var editingId = null;
   var editingCreatedAt = null;
+  var pendingReceiptData = null;
+  var currentUser = null;
+  var ALLOWED_EMAILS = (window.ALLOWED_EMAILS || []).map(function (e) { return String(e).toLowerCase(); });
 
   var CASA_LABELS = { blue: 'Blue', oficial: 'Oficial', bolsa: 'MEP', contadoconliqui: 'CCL', mayorista: 'Mayorista', cripto: 'Cripto' };
   function casaLabel(casa) { return CASA_LABELS[casa] || casa; }
+
+  var CATEGORY_LABELS = {
+    supermercado: 'Supermercado', comida: 'Comida afuera', transporte: 'Transporte',
+    servicios: 'Servicios', salud: 'Salud', entretenimiento: 'Entretenimiento',
+    hogar: 'Hogar', otros: 'Otros'
+  };
+  function categoryLabel(cat) { return CATEGORY_LABELS[cat] || cat; }
 
   // ---------- Small helpers ----------
   function todayStr() {
@@ -96,16 +121,34 @@
     statusEl.textContent = msg || '';
     statusEl.style.color = isError ? 'var(--danger)' : 'var(--ink-soft)';
   }
-  function showToast(msg, isError) {
+  function showToast(msg, opts) {
+    if (opts === true) opts = { error: true };
+    opts = opts || {};
     var el = document.createElement('div');
-    el.className = 'toast' + (isError ? ' error' : '');
-    el.textContent = msg;
-    toastStackEl.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('show'); });
-    setTimeout(function () {
+    el.className = 'toast' + (opts.error ? ' error' : '');
+    var span = document.createElement('span');
+    span.textContent = msg;
+    el.appendChild(span);
+    var timer;
+    function dismiss() {
       el.classList.remove('show');
       setTimeout(function () { el.remove(); }, 200);
-    }, 2400);
+    }
+    if (opts.actionLabel && opts.onAction) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'toast-action';
+      btn.textContent = opts.actionLabel;
+      btn.addEventListener('click', function () {
+        clearTimeout(timer);
+        opts.onAction();
+        dismiss();
+      });
+      el.appendChild(btn);
+    }
+    toastStackEl.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('show'); });
+    timer = setTimeout(dismiss, opts.duration || 4000);
   }
 
   // ---------- Theme ----------
@@ -188,6 +231,56 @@
       loaded = true;
       showUnavailable('No se pudo conectar con la base de datos compartida. Revisá la configuración y las reglas de Firebase.');
     });
+    initAuth();
+  }
+
+  // ---------- Auth (Google, opcional) ----------
+  function isAuthorized() {
+    if (!ALLOWED_EMAILS.length) return true; // sin restricción configurada: se comporta como antes
+    return !!(currentUser && currentUser.email && ALLOWED_EMAILS.indexOf(currentUser.email.toLowerCase()) !== -1);
+  }
+  function updateAuthUi() {
+    if (!ALLOWED_EMAILS.length) { authBarEl.hidden = true; return; }
+    authBarEl.hidden = false;
+    if (!currentUser) {
+      authBarEl.classList.remove('unauthorized');
+      authStatusEl.textContent = 'Conectate con Google para poder cargar movimientos.';
+      authBtn.textContent = 'Conectar con Google';
+      authBtn.onclick = signInGoogle;
+    } else if (!isAuthorized()) {
+      authBarEl.classList.add('unauthorized');
+      authStatusEl.textContent = 'La cuenta ' + currentUser.email + ' no está autorizada.';
+      authBtn.textContent = 'Cerrar sesión';
+      authBtn.onclick = signOutGoogle;
+    } else {
+      authBarEl.classList.remove('unauthorized');
+      authStatusEl.textContent = 'Conectado como ' + (currentUser.displayName || currentUser.email) + '.';
+      authBtn.textContent = 'Cerrar sesión';
+      authBtn.onclick = signOutGoogle;
+    }
+  }
+  function signInGoogle() {
+    if (!firebase.auth) return;
+    var provider = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(provider).catch(function (err) {
+      console.error(err);
+      showToast('No se pudo iniciar sesión con Google.', true);
+    });
+  }
+  function signOutGoogle() {
+    if (!firebase.auth) return;
+    firebase.auth().signOut();
+  }
+  function initAuth() {
+    if (!ALLOWED_EMAILS.length) return;
+    if (!firebase.auth) {
+      console.warn('firebase-auth-compat.js no está cargado.');
+      return;
+    }
+    firebase.auth().onAuthStateChanged(function (user) {
+      currentUser = user;
+      updateAuthUi();
+    });
   }
 
   // ---------- Mode / currency UI ----------
@@ -197,11 +290,13 @@
     });
     if (mode === 'settlement') {
       payerToggleEl.hidden = true;
+      categoryRowEl.hidden = true;
       directionToggleEl.hidden = false;
       currencyToggleEl.hidden = false;
       descEl.placeholder = 'Transferencia, efectivo, Mercado Pago… (opcional)';
     } else {
       payerToggleEl.hidden = false;
+      categoryRowEl.hidden = false;
       directionToggleEl.hidden = true;
       currencyToggleEl.hidden = true;
       rateRowEl.hidden = true;
@@ -288,12 +383,107 @@
     });
   }
 
+  // ---------- Receipt photo ----------
+  function compressImage(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var maxW = 900;
+          var scale = Math.min(1, maxW / img.width);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.62));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  function showReceiptPreview(dataUrl) {
+    receiptPreviewImgEl.src = dataUrl;
+    receiptPreviewEl.hidden = false;
+  }
+  function clearReceipt() {
+    pendingReceiptData = null;
+    receiptInputEl.value = '';
+    receiptPreviewEl.hidden = true;
+    receiptPreviewImgEl.src = '';
+  }
+  receiptInputEl.addEventListener('change', function () {
+    var file = receiptInputEl.files && receiptInputEl.files[0];
+    if (!file) return;
+    compressImage(file).then(function (dataUrl) {
+      pendingReceiptData = dataUrl;
+      showReceiptPreview(dataUrl);
+    }).catch(function (err) {
+      console.error(err);
+      showToast('No se pudo procesar la imagen.', true);
+      clearReceipt();
+    });
+  });
+  removeReceiptBtn.addEventListener('click', clearReceipt);
+
+  // ---------- Draft (autosave mientras se escribe) ----------
+  var DRAFT_KEY = 'gastos-compartidos-draft';
+  var draftLoading = false;
+  function saveDraft() {
+    if (editingId || draftLoading) return;
+    var draft = {
+      mode: selectedMode, payer: selectedPayer, direction: selectedDirection,
+      currency: selectedCurrency, dolarCasa: dolarCasaEl.value, category: categoryEl.value,
+      amount: amountEl.value, rate: rateEl.value, date: dateEl.value, description: descEl.value
+    };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
+  }
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+  }
+  function loadDraft() {
+    var raw;
+    try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return; }
+    if (!raw) return;
+    var draft;
+    try { draft = JSON.parse(raw); } catch (e) { return; }
+    if (!draft) return;
+    draftLoading = true;
+    if (draft.category) categoryEl.value = draft.category;
+    if (draft.mode === 'settlement') {
+      selectedMode = 'settlement';
+      modeButtons.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-mode') === 'settlement' ? 'true' : 'false'); });
+      setUiForMode('settlement');
+      selectDirection(draft.direction || 'delfina-nicolas');
+      if (draft.currency === 'USD') {
+        selectedCurrency = 'USD';
+        currencyButtons.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-currency') === 'USD' ? 'true' : 'false'); });
+        amountLabelEl.textContent = 'Monto (US$)';
+        rateRowEl.hidden = false;
+        if (draft.dolarCasa) dolarCasaEl.value = draft.dolarCasa;
+        if (draft.rate) { rateEl.value = draft.rate; rateAutoFilled = false; }
+      }
+      submitBtnEl.textContent = 'Agregar pago';
+    }
+    if (draft.amount) amountEl.value = draft.amount;
+    if (draft.date) dateEl.value = draft.date;
+    if (draft.description) descEl.value = draft.description;
+    renderRateHint();
+    draftLoading = false;
+  }
+
   // ---------- Form actions ----------
   function resetFormFully() {
     editingId = null;
     editingCreatedAt = null;
     form.reset();
+    clearReceipt();
     dateEl.value = todayStr();
+    categoryEl.value = 'otros';
     selectedMode = 'expense';
     selectedPayer = 'delfina';
     selectedDirection = 'delfina-nicolas';
@@ -309,6 +499,9 @@
     });
     currencyButtons.forEach(function (b) {
       b.setAttribute('aria-pressed', b.getAttribute('data-currency') === 'ARS' ? 'true' : 'false');
+    });
+    modeButtons.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-mode') === 'expense' ? 'true' : 'false');
     });
     submitBtnEl.textContent = 'Agregar gasto';
     settlementHintEl.hidden = true;
@@ -327,13 +520,23 @@
   function startEdit(id) {
     var doc = docs.filter(function (d) { return d.id === id; })[0];
     if (!doc) return;
+    if (!isAuthorized()) {
+      showToast('Necesitás conectarte con una cuenta autorizada para editar.', true);
+      return;
+    }
     editingId = id;
     editingCreatedAt = doc.createdAt || Date.now();
     settlementHintEl.hidden = true;
+    clearReceipt();
+    if (doc.receiptData) {
+      pendingReceiptData = doc.receiptData;
+      showReceiptPreview(doc.receiptData);
+    }
 
     if (doc.kind === 'settlement') {
       selectedMode = 'settlement';
       setUiForMode('settlement');
+      modeButtons.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-mode') === 'settlement' ? 'true' : 'false'); });
       selectDirection(doc.from + '-' + doc.to);
       selectedCurrency = doc.currency === 'USD' ? 'USD' : 'ARS';
       currencyButtons.forEach(function (b) {
@@ -356,10 +559,12 @@
     } else {
       selectedMode = 'expense';
       setUiForMode('expense');
+      modeButtons.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-mode') === 'expense' ? 'true' : 'false'); });
       selectedPayer = doc.payer;
       payerButtons.forEach(function (b) {
         b.setAttribute('aria-pressed', b.getAttribute('data-payer') === doc.payer ? 'true' : 'false');
       });
+      categoryEl.value = doc.category || 'otros';
       amountEl.value = doc.amount;
     }
 
@@ -375,6 +580,10 @@
   function addExpense() {
     if (!dbRef) {
       setStatus('No se pudo conectar la base de datos compartida.', true);
+      return;
+    }
+    if (!isAuthorized()) {
+      setStatus('Necesitás conectarte con una cuenta de Google autorizada para guardar.', true);
       return;
     }
     var amount = parseFloat(amountEl.value);
@@ -408,8 +617,10 @@
         };
       }
     } else {
-      payload = { kind: 'expense', payer: selectedPayer, amount: amount, description: description, date: date };
+      payload = { kind: 'expense', payer: selectedPayer, category: categoryEl.value, amount: amount, description: description, date: date };
     }
+
+    if (pendingReceiptData) payload.receiptData = pendingReceiptData;
 
     var wasEditing = !!editingId;
     payload.createdAt = wasEditing ? (editingCreatedAt || Date.now()) : Date.now();
@@ -422,6 +633,7 @@
     writeOp.then(function () {
       submitBtnEl.disabled = false;
       resetFormFully();
+      clearDraft();
       showToast(wasEditing ? 'Cambios guardados.' : (payload.kind === 'settlement' ? 'Pago agregado.' : 'Gasto agregado.'));
     }).catch(function (err) {
       submitBtnEl.disabled = false;
@@ -432,8 +644,27 @@
 
   function removeExpense(id) {
     if (!dbRef || !id) return;
+    if (!isAuthorized()) {
+      showToast('Necesitás conectarte con una cuenta autorizada para eliminar.', true);
+      return;
+    }
+    var doc = docs.filter(function (d) { return d.id === id; })[0];
+    if (!doc) return;
+    var snapshot = {};
+    Object.keys(doc).forEach(function (k) { if (k !== 'id') snapshot[k] = doc[k]; });
     if (id === editingId) resetFormFully();
-    dbRef.child(id).remove().catch(function (err) {
+    dbRef.child(id).remove().then(function () {
+      showToast('Movimiento eliminado.', {
+        actionLabel: 'Deshacer',
+        duration: 5000,
+        onAction: function () {
+          dbRef.child(id).set(snapshot).catch(function (err) {
+            console.error(err);
+            showToast('No se pudo deshacer.', true);
+          });
+        }
+      });
+    }).catch(function (err) {
       console.error(err);
       showToast('No se pudo eliminar ese movimiento.', true);
     });
@@ -452,7 +683,22 @@
     }).join('');
   }
 
+  function updateCategoryFilterOptions() {
+    var present = {};
+    docs.forEach(function (d) { if (d.category) present[d.category] = true; });
+    var cats = Object.keys(present);
+    var current = categoryFilterEl.value || 'all';
+    var html = '<option value="all">Todas las categorías</option>' + cats.map(function (c) {
+      return '<option value="' + c + '">' + escapeHtml(categoryLabel(c)) + '</option>';
+    }).join('');
+    if (categoryFilterEl.innerHTML !== html) {
+      categoryFilterEl.innerHTML = html;
+      categoryFilterEl.value = cats.indexOf(current) !== -1 || current === 'all' ? current : 'all';
+    }
+  }
+
   function matchesFilter(d) {
+    if (activeCategory !== 'all' && d.category !== activeCategory) return false;
     if (activeFilter === 'all') return true;
     if (activeFilter === 'settlement') return d.kind === 'settlement';
     if (activeFilter === 'delfina') {
@@ -466,11 +712,73 @@
     return true;
   }
 
+  // ---------- CSV export ----------
+  function csvEscape(v) {
+    v = (v === undefined || v === null) ? '' : String(v);
+    if (/[",\n;]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+    return v;
+  }
+  function exportCsv() {
+    if (!docs.length) { showToast('No hay movimientos para exportar.', true); return; }
+    var rows = [['Fecha', 'Tipo', 'Quién / Dirección', 'Categoría', 'Descripción', 'Moneda', 'Monto US$', 'Cotización', 'Monto ARS']];
+    docs.slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); }).forEach(function (d) {
+      if (d.kind === 'settlement') {
+        rows.push([
+          d.date || '', 'Pago directo',
+          (d.from === 'delfina' ? 'Delfina' : 'Nicolás') + ' → ' + (d.to === 'delfina' ? 'Delfina' : 'Nicolás'),
+          '', d.description || '', d.currency || 'ARS',
+          d.currency === 'USD' ? d.amountUsd : '', d.currency === 'USD' ? d.rate : '', d.amount
+        ]);
+      } else {
+        rows.push([
+          d.date || '', 'Gasto compartido', d.payer === 'delfina' ? 'Delfina' : 'Nicolás',
+          d.category ? categoryLabel(d.category) : '', d.description || '', 'ARS', '', '', d.amount
+        ]);
+      }
+    });
+    var csv = rows.map(function (r) { return r.map(csvEscape).join(','); }).join('\r\n');
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gastos-compartidos-' + todayStr() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // ---------- Balance chart (SVG, sin librerías) ----------
+  function renderBalanceChart(ascPoints) {
+    if (ascPoints.length < 2) { chartWrapEl.hidden = true; return; }
+    chartWrapEl.hidden = false;
+    var w = 600, h = 70, pad = 4;
+    var values = ascPoints.map(function (p) { return p.cum; });
+    var min = Math.min(0, Math.min.apply(null, values));
+    var max = Math.max(0, Math.max.apply(null, values));
+    if (min === max) { min -= 1; max += 1; }
+    var xStep = ascPoints.length > 1 ? (w - pad * 2) / (ascPoints.length - 1) : 0;
+    function xAt(i) { return pad + i * xStep; }
+    function yAt(v) { return h - pad - ((v - min) / (max - min)) * (h - pad * 2); }
+    var path = ascPoints.map(function (p, i) {
+      return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(p.cum).toFixed(1);
+    }).join(' ');
+    var zeroY = yAt(0).toFixed(1);
+    chartHolderEl.innerHTML =
+      '<svg viewBox="0 0 ' + w + ' ' + h + '" class="balance-chart" preserveAspectRatio="none">' +
+        '<line x1="' + pad + '" y1="' + zeroY + '" x2="' + (w - pad) + '" y2="' + zeroY + '" class="chart-zero" />' +
+        '<path d="' + path + '" class="chart-line" fill="none" />' +
+      '</svg>';
+  }
+
   // ---------- Rendering ----------
   function rowHtml(d) {
     var dateLabel = d.date ? dfmt.format(parseLocalDate(d.date)) : '';
+    var receiptBtn = d.receiptData
+      ? '<button type="button" class="row-edit receipt-btn" data-receipt="' + d.id + '" aria-label="Ver ticket" title="Ver ticket">📷</button>'
+      : '';
     var actions =
-      '<div class="row-actions">' +
+      '<div class="row-actions">' + receiptBtn +
         '<button class="row-edit" data-id="' + d.id + '" aria-label="Editar movimiento">✎</button>' +
         '<button class="row-del" data-id="' + d.id + '" aria-label="Eliminar movimiento">×</button>' +
       '</div>';
@@ -499,12 +807,15 @@
 
     var payerLabel = d.payer === 'delfina' ? 'Delfina' : 'Nicolás';
     var desc = d.description ? d.description : 'Sin descripción';
+    var metaBits2 = [payerLabel];
+    if (d.category) metaBits2.push(categoryLabel(d.category));
+    if (dateLabel) metaBits2.push(dateLabel);
     return (
       '<div class="row" data-id="' + d.id + '">' +
         '<span class="tag ' + d.payer + '"></span>' +
         '<div class="row-main">' +
           '<div class="row-desc">' + escapeHtml(desc) + '</div>' +
-          '<div class="row-meta">' + payerLabel + (dateLabel ? ' · ' + dateLabel : '') + '</div>' +
+          '<div class="row-meta">' + metaBits2.join(' · ') + '</div>' +
         '</div>' +
         '<span class="row-amt">' + money(d.amount) + '</span>' +
         actions +
@@ -520,6 +831,7 @@
     });
     var cum = 0;
     var closingByMonth = {};
+    var chartPoints = [];
     asc.forEach(function (d) {
       var amt = Number(d.amount) || 0;
       if (d.kind === 'settlement') {
@@ -531,11 +843,13 @@
       }
       var mk = (d.date || '').slice(0, 7);
       if (mk) closingByMonth[mk] = cum;
+      chartPoints.push({ cum: cum });
     });
     var net = cum;
     lastNet = net;
     statDelfinaEl.textContent = money(totalDelfina);
     statNicolasEl.textContent = money(totalNicolas);
+    renderBalanceChart(chartPoints);
 
     balanceLineEl.classList.remove('owes-delfina', 'owes-nicolas', 'settled');
     if (!loaded) {
@@ -552,6 +866,7 @@
     }
 
     updateSuggestions();
+    updateCategoryFilterOptions();
 
     if (!loaded) {
       ledgerEl.innerHTML = '<div class="empty">Conectando…</div>';
@@ -614,8 +929,14 @@
     ledgerEl.querySelectorAll('.row-del').forEach(function (btn) {
       btn.addEventListener('click', function () { removeExpense(btn.getAttribute('data-id')); });
     });
-    ledgerEl.querySelectorAll('.row-edit').forEach(function (btn) {
+    ledgerEl.querySelectorAll('.row-edit:not(.receipt-btn)').forEach(function (btn) {
       btn.addEventListener('click', function () { startEdit(btn.getAttribute('data-id')); });
+    });
+    ledgerEl.querySelectorAll('.receipt-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var d = docs.filter(function (x) { return x.id === btn.getAttribute('data-receipt'); })[0];
+        if (d && d.receiptData) window.open(d.receiptData, '_blank');
+      });
     });
   }
 
@@ -624,6 +945,7 @@
     btn.addEventListener('click', function () {
       selectedPayer = btn.getAttribute('data-payer');
       payerButtons.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+      saveDraft();
     });
   });
 
@@ -631,6 +953,7 @@
     btn.addEventListener('click', function () {
       selectedDirection = btn.getAttribute('data-direction');
       directionButtons.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+      saveDraft();
     });
   });
 
@@ -641,6 +964,7 @@
       rateEl.value = '';
       rateAutoFilled = false;
       setUiForCurrency(selectedCurrency);
+      saveDraft();
     });
   });
 
@@ -663,6 +987,7 @@
         settlementHintEl.hidden = true;
       }
       setStatus('');
+      saveDraft();
     });
   });
 
@@ -674,18 +999,35 @@
     });
   });
 
-  dolarCasaEl.addEventListener('change', autoFetchRate);
+  categoryFilterEl.addEventListener('change', function () {
+    activeCategory = categoryFilterEl.value;
+    render();
+  });
+
+  exportCsvBtn.addEventListener('click', exportCsv);
+
+  fabBtn.addEventListener('click', function () {
+    formCardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(function () { amountEl.focus(); }, 300);
+  });
+
+  dolarCasaEl.addEventListener('change', function () { autoFetchRate(); saveDraft(); });
   dateEl.addEventListener('change', function () {
     if (selectedMode === 'settlement' && selectedCurrency === 'USD') autoFetchRate();
+    saveDraft();
   });
   refreshRateBtn.addEventListener('click', autoFetchRate);
   amountEl.addEventListener('input', function () {
     if (selectedMode === 'settlement' && selectedCurrency === 'USD') renderRateHint();
+    saveDraft();
   });
   rateEl.addEventListener('input', function () {
     rateAutoFilled = false;
     if (selectedMode === 'settlement' && selectedCurrency === 'USD') renderRateHint();
+    saveDraft();
   });
+  descEl.addEventListener('input', saveDraft);
+  categoryEl.addEventListener('change', saveDraft);
 
   cancelEditBtn.addEventListener('click', function () {
     resetFormFully();
@@ -697,9 +1039,17 @@
     addExpense();
   });
 
+  // ---------- PWA ----------
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+
   // ---------- Boot ----------
   dateEl.value = todayStr();
   resetFormFully();
+  loadDraft();
   initTheme();
   initGate();
 })();
