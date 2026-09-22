@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuentas claras — Delfina y Nicolás</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="gate-card">
+    <p class="gate-kicker">🧾 Cuentas claras</p>
+    <p class="gate-title">Esto es privado</p>
+    <p class="gate-copy">Ingresá la contraseña para ver y cargar movimientos.</p>
+    <input type="password" id="gatePassword" placeholder="Contraseña" autocomplete="current-password" autofocus required>
+    <button type="submit" class="submit-btn">Entrar</button>
+    <p class="gate-error" id="gateError" hidden>Contraseña incorrecta. Probá de nuevo.</p>
+  </form>
+</div>
+
+<div id="app" class="app" hidden>
+
+  <header class="topbar">
+    <span class="topbar-title">🧾 Cuentas claras</span>
+    <button type="button" class="theme-btn" id="themeBtn" aria-label="Cambiar tema">◐</button>
+  </header>
+
+  <div class="wrap">
+
+    <section class="hero">
+      <p class="kicker">Cuentas entre <b>Delfina</b> y <b>Nicolás</b></p>
+      <p class="balance-line settled" id="balanceLine">Conectando…</p>
+      <div class="stats">
+        <div class="stat delfina"><span>Pagó Delfina</span><b id="statDelfina">$0</b></div>
+        <div class="stat nicolas"><span>Pagó Nicolás</span><b id="statNicolas">$0</b></div>
+      </div>
+    </section>
+
+    <div class="stub-tear" aria-hidden="true"></div>
+
+    <div class="app-grid">
+
+      <aside class="form-card" id="formCard">
+        <form id="expenseForm">
+          <p class="form-title" id="formTitle">Sumar un movimiento</p>
+
+          <div class="mode-toggle" role="tablist" aria-label="Tipo de movimiento">
+            <button type="button" class="mode-btn" data-mode="expense" aria-pressed="true">Gasto compartido</button>
+            <button type="button" class="mode-btn" data-mode="settlement" aria-pressed="false">Pago directo</button>
+          </div>
+
+          <div class="payer-toggle" id="payerToggle" role="radiogroup" aria-label="Quién pagó">
+            <button type="button" class="payer-btn delfina" data-payer="delfina" aria-pressed="true">Pagó Delfina</button>
+            <button type="button" class="payer-btn nicolas" data-payer="nicolas" aria-pressed="false">Pagó Nicolás</button>
+          </div>
+
+          <div class="payer-toggle" id="directionToggle" role="radiogroup" aria-label="Quién le paga a quién" hidden>
+            <button type="button" class="payer-btn direction" data-direction="delfina-nicolas" aria-pressed="true">Delfina → Nicolás</button>
+            <button type="button" class="payer-btn direction" data-direction="nicolas-delfina" aria-pressed="false">Nicolás → Delfina</button>
+          </div>
+
+          <div class="payer-toggle" id="currencyToggle" role="radiogroup" aria-label="Moneda del pago" hidden>
+            <button type="button" class="payer-btn currency" data-currency="ARS" aria-pressed="true">Pesos</button>
+            <button type="button" class="payer-btn currency" data-currency="USD" aria-pressed="false">Dólares</button>
+          </div>
+
+          <p class="hint-line" id="settlementHint" hidden>Precargamos lo que se debe hasta ahora. Dejalo así para saldar todo, o cambiá el monto para saldar solo una parte.</p>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="amount" id="amountLabel">Monto</label>
+              <input type="number" id="amount" inputmode="decimal" min="0" step="0.01" placeholder="0" required>
+            </div>
+            <div class="field">
+              <label for="date">Fecha</label>
+              <input type="date" id="date" required>
+            </div>
+          </div>
+
+          <div class="field-row" id="rateRow" hidden>
+            <div class="field field-small">
+              <label for="dolarCasa">Tipo de dólar</label>
+              <select id="dolarCasa">
+                <option value="blue" selected>Blue</option>
+                <option value="oficial">Oficial</option>
+                <option value="bolsa">MEP</option>
+                <option value="contadoconliqui">CCL</option>
+                <option value="mayorista">Mayorista</option>
+                <option value="cripto">Cripto</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="rate">Cotización (ARS)</label>
+              <div class="rate-input-wrap">
+                <input type="number" id="rate" inputmode="decimal" min="0" step="0.01" placeholder="Ej: 1350">
+                <button type="button" id="refreshRateBtn" class="icon-btn" aria-label="Buscar cotización" title="Buscar cotización">⟳</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint-line" id="rateStatus" hidden></p>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="description">Descripción</label>
+              <input type="text" id="description" maxlength="80" placeholder="Supermercado, nafta, alquiler…" list="descSuggestions" autocomplete="off">
+              <datalist id="descSuggestions"></datalist>
+            </div>
+          </div>
+
+          <p class="edit-banner" id="editBanner" hidden>Estás editando un movimiento · <button type="button" class="link-btn" id="cancelEditBtn">Cancelar</button></p>
+          <button type="submit" class="submit-btn" id="submitBtn">Agregar gasto</button>
+          <p class="status-line" id="formStatus"></p>
+        </form>
+      </aside>
+
+      <section class="ledger-section">
+        <div class="filter-row" role="tablist" aria-label="Filtrar movimientos">
+          <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">Todos</button>
+          <button type="button" class="filter-btn" data-filter="delfina" aria-pressed="false">Delfina</button>
+          <button type="button" class="filter-btn" data-filter="nicolas" aria-pressed="false">Nicolás</button>
+          <button type="button" class="filter-btn" data-filter="settlement" aria-pressed="false">Pagos</button>
+        </div>
+        <div class="ledger" id="ledger">
+          <div class="empty">Conectando…</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
