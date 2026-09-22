@@ -27,7 +27,7 @@ window.FIREBASE_CONFIG = {
     appId: "1:1086836591660:web:5e10f64948c7be35621589"
 };
 
-window.APP_PASSWORD = "CasitaZapata2026$";
+window.APP_PASSWORD = "CasitaZapiola2026$";
 
 window.DB_PATH = "gastosCompartidos";
 
