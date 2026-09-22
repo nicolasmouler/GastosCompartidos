@@ -60,6 +60,8 @@ body {
 ::selection { background: var(--rule-strong); }
 button, input, select { font-family: inherit; }
 
+[hidden] { display: none !important; }
+
 /* ---------- Password gate ---------- */
 .gate {
   min-height: 100vh;
