@@ -25,6 +25,12 @@
   var categoryRowEl = document.getElementById('categoryRow');
   var categoryEl = document.getElementById('category');
   var categoryFilterEl = document.getElementById('categoryFilter');
+  var editCategoriesBtn = document.getElementById('editCategoriesBtn');
+  var categoryEditorEl = document.getElementById('categoryEditor');
+  var categoryEditorListEl = document.getElementById('categoryEditorList');
+  var newCategoryInputEl = document.getElementById('newCategoryInput');
+  var addCategoryBtn = document.getElementById('addCategoryBtn');
+  var closeCategoryEditorBtn = document.getElementById('closeCategoryEditorBtn');
   var dolarCasaEl = document.getElementById('dolarCasa');
   var rateEl = document.getElementById('rate');
   var rateRowEl = document.getElementById('rateRow');
@@ -81,12 +87,117 @@
   var CASA_LABELS = { blue: 'Blue', oficial: 'Oficial', bolsa: 'MEP', contadoconliqui: 'CCL', mayorista: 'Mayorista', cripto: 'Cripto' };
   function casaLabel(casa) { return CASA_LABELS[casa] || casa; }
 
-  var CATEGORY_LABELS = {
+  var DEFAULT_CATEGORIES = {
     supermercado: 'Supermercado', comida: 'Comida afuera', transporte: 'Transporte',
     servicios: 'Servicios', salud: 'Salud', entretenimiento: 'Entretenimiento',
     hogar: 'Hogar', otros: 'Otros'
   };
-  function categoryLabel(cat) { return CATEGORY_LABELS[cat] || cat; }
+  var categories = null; // se llena desde Firebase; null hasta el primer snapshot
+  var categoriesRef = null;
+  function categoryLabel(cat) {
+    var map = categories || DEFAULT_CATEGORIES;
+    return map[cat] || cat;
+  }
+  function slugify(s) {
+    var out = String(s).toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24);
+    return out || 'cat';
+  }
+  function uniqueCategoryId(base) {
+    var map = categories || {};
+    var id = base, n = 2;
+    while (map[id] != null) { id = base + '-' + n; n++; }
+    return id;
+  }
+
+  function populateCategorySelect() {
+    var map = categories || DEFAULT_CATEGORIES;
+    var current = categoryEl.value;
+    var ids = Object.keys(map);
+    categoryEl.innerHTML = ids.map(function (id) {
+      return '<option value="' + id + '">' + escapeHtml(map[id]) + '</option>';
+    }).join('');
+    if (ids.indexOf(current) !== -1) categoryEl.value = current;
+    else if (ids.indexOf('otros') !== -1) categoryEl.value = 'otros';
+  }
+
+  function renderCategoryEditor() {
+    var map = categories || DEFAULT_CATEGORIES;
+    var ids = Object.keys(map);
+    categoryEditorListEl.innerHTML = ids.map(function (id) {
+      return (
+        '<div class="cat-edit-row" data-id="' + id + '">' +
+          '<input type="text" class="cat-edit-input" value="' + escapeHtml(map[id]) + '" data-id="' + id + '" maxlength="30">' +
+          '<button type="button" class="row-del" data-catdel="' + id + '" aria-label="Eliminar categoría">×</button>' +
+        '</div>'
+      );
+    }).join('');
+    categoryEditorListEl.querySelectorAll('.cat-edit-input').forEach(function (input) {
+      input.addEventListener('change', function () {
+        renameCategory(input.getAttribute('data-id'), input.value.trim());
+      });
+    });
+    categoryEditorListEl.querySelectorAll('[data-catdel]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        deleteCategory(btn.getAttribute('data-catdel'));
+      });
+    });
+  }
+
+  function requireAuthForCategories() {
+    if (!categoriesRef) { showToast('No se pudo conectar la base de datos compartida.', true); return false; }
+    if (!isAuthorized()) { showToast('Necesitás conectarte con una cuenta autorizada para editar categorías.', true); return false; }
+    return true;
+  }
+
+  function renameCategory(id, label) {
+    if (!requireAuthForCategories()) { renderCategoryEditor(); return; }
+    if (!label) { renderCategoryEditor(); return; }
+    categoriesRef.child(id).set(label).catch(function (err) {
+      console.error(err);
+      showToast('No se pudo renombrar la categoría.', true);
+    });
+  }
+
+  function deleteCategory(id) {
+    if (!requireAuthForCategories()) return;
+    var map = categories || DEFAULT_CATEGORIES;
+    if (Object.keys(map).length <= 1) {
+      showToast('Tiene que quedar al menos una categoría.', true);
+      return;
+    }
+    categoriesRef.child(id).remove().catch(function (err) {
+      console.error(err);
+      showToast('No se pudo eliminar la categoría.', true);
+    });
+  }
+
+  function addCategoryFromInput() {
+    if (!requireAuthForCategories()) return;
+    var label = newCategoryInputEl.value.trim();
+    if (!label) return;
+    var id = uniqueCategoryId(slugify(label));
+    categoriesRef.child(id).set(label).then(function () {
+      newCategoryInputEl.value = '';
+      newCategoryInputEl.focus();
+    }).catch(function (err) {
+      console.error(err);
+      showToast('No se pudo agregar la categoría.', true);
+    });
+  }
+
+  editCategoriesBtn.addEventListener('click', function () {
+    categoryEditorEl.hidden = !categoryEditorEl.hidden;
+    if (!categoryEditorEl.hidden) renderCategoryEditor();
+  });
+  closeCategoryEditorBtn.addEventListener('click', function () { categoryEditorEl.hidden = true; });
+  addCategoryBtn.addEventListener('click', addCategoryFromInput);
+  newCategoryInputEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addCategoryFromInput(); }
+  });
 
   // ---------- Small helpers ----------
   function todayStr() {
@@ -231,6 +342,23 @@
       loaded = true;
       showUnavailable('No se pudo conectar con la base de datos compartida. Revisá la configuración y las reglas de Firebase.');
     });
+    categoriesRef = firebase.database().ref((window.DB_PATH || 'gastosCompartidos') + '/categorias');
+    categoriesRef.on('value', function (snap) {
+      var val = snap.val();
+      if (val && Object.keys(val).length) {
+        categories = val;
+      } else if (val === null) {
+        categories = DEFAULT_CATEGORIES;
+        categoriesRef.set(DEFAULT_CATEGORIES).catch(function (err) { console.error(err); });
+      }
+      populateCategorySelect();
+      if (!categoryEditorEl.hidden) renderCategoryEditor();
+      render();
+    }, function (err) {
+      console.error(err);
+      categories = DEFAULT_CATEGORIES;
+      populateCategorySelect();
+    });
     initAuth();
   }
 
@@ -264,7 +392,20 @@
     var provider = new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithPopup(provider).catch(function (err) {
       console.error(err);
-      showToast('No se pudo iniciar sesión con Google.', true);
+      if (err && err.code === 'auth/popup-closed-by-user') return;
+      var msg = 'No se pudo iniciar sesión con Google.';
+      if (err) {
+        if (err.code === 'auth/unauthorized-domain') {
+          msg = 'Este dominio no está autorizado en Firebase (Authentication → Settings → Authorized domains).';
+        } else if (err.code === 'auth/operation-not-allowed') {
+          msg = 'Google no está habilitado como método de inicio de sesión en tu proyecto de Firebase (Authentication → Sign-in method).';
+        } else if (err.code === 'auth/popup-blocked') {
+          msg = 'El navegador bloqueó la ventana de Google. Permití popups para este sitio e intentá de nuevo.';
+        } else if (err.code === 'auth/network-request-failed') {
+          msg = 'Falló la conexión con Google. Revisá tu internet e intentá de nuevo.';
+        }
+      }
+      showToast(msg, true);
     });
   }
   function signOutGoogle() {
@@ -1047,6 +1188,7 @@
   }
 
   // ---------- Boot ----------
+  populateCategorySelect();
   dateEl.value = todayStr();
   resetFormFully();
   loadDraft();

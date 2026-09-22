@@ -74,17 +74,18 @@
           <div class="field-row" id="categoryRow">
             <div class="field">
               <label for="category">Categoría</label>
-              <select id="category">
-                <option value="supermercado">Supermercado</option>
-                <option value="comida">Comida afuera</option>
-                <option value="transporte">Transporte</option>
-                <option value="servicios">Servicios</option>
-                <option value="salud">Salud</option>
-                <option value="entretenimiento">Entretenimiento</option>
-                <option value="hogar">Hogar</option>
-                <option value="otros" selected>Otros</option>
-              </select>
+              <select id="category"></select>
+              <button type="button" class="link-btn cat-edit-toggle" id="editCategoriesBtn">Editar categorías</button>
             </div>
+          </div>
+
+          <div class="category-editor" id="categoryEditor" hidden>
+            <div id="categoryEditorList"></div>
+            <div class="category-editor-add">
+              <input type="text" id="newCategoryInput" placeholder="Nueva categoría" maxlength="30">
+              <button type="button" class="icon-btn" id="addCategoryBtn" aria-label="Agregar categoría">+</button>
+            </div>
+            <button type="button" class="link-btn" id="closeCategoryEditorBtn">Listo</button>
           </div>
 
           <div class="payer-toggle" id="directionToggle" role="radiogroup" aria-label="Quién le paga a quién" hidden>
